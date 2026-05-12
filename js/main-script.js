@@ -55,6 +55,9 @@ function createScene() {
     droneWatch = new DroneWatch();
     scene.add(droneWatch);
 
+    let strap = new Strap();
+    scene.add(strap);
+
     let balloons = [];
     let ballonsPositions = [
         [0, -30, 0],
@@ -134,6 +137,30 @@ function setCamera(index) {
 ////////////////////////
 /* CREATE OBJECT3D(S) */
 ////////////////////////
+class Strap extends THREE.Group {
+    constructor() {
+        super();
+        this._strap = null;
+        this._loadStrap();
+        this.rotateY(Math.PI / 2);
+    }
+
+    _loadStrap() {
+        const loader = new GLTFLoader();
+
+        loader.load('../assets/strap.gltf', (gltf) => {
+            this._strap = gltf.scene;
+
+            this._strap.scale.set(0.22, 0.10, 0.10);
+            this._strap.position.set(0, -2, 0);
+            this._strap.rotation.y = Math.PI / 2;
+            this.add(this._strap);
+
+            console.log("Strap loaded and added to DroneWatch");
+        });
+    }
+}
+
 class DroneWatch extends THREE.Group {
     constructor() {
         super();
@@ -144,12 +171,12 @@ class DroneWatch extends THREE.Group {
         this._body = new WatchBody();
         this.add(this._body);
         this._addRotors();
-        this._loadStrap();
 
         const axesHelper = new THREE.AxesHelper(8);
         axesHelper.visible = false;
         this.add(axesHelper);
         axesHelpers.push(axesHelper);
+        this.rotation.order = 'YXZ';
         this.rotation.y = -Math.PI / 2;
     }
 
@@ -178,28 +205,13 @@ class DroneWatch extends THREE.Group {
         }
     }
 
-    _loadStrap() {
-        const loader = new GLTFLoader();
-
-        loader.load('../assets/strap.gltf', (gltf) => {
-            this._strap = gltf.scene;
-
-            this._strap.scale.set(0.22, 0.10, 0.10);
-            this._strap.position.set(0, -2, 0);
-            this._strap.rotation.y = Math.PI / 2;
-            this.add(this._strap);
-
-            console.log("Strap loaded and added to DroneWatch");
-        });
-    }
-
     toggleDeploy() {
         this.targetDeployProgress = this.targetDeployProgress === 1 ? 0 : 1;
     }
 
     update(dt, pressed) {
         // 1. Animação de recolha / extensão
-        const deploySpeed = 2.0;
+        const deploySpeed = 1.5
         if (this.deployProgress < this.targetDeployProgress) {
             this.deployProgress = Math.min(1, this.deployProgress + dt * deploySpeed);
         } else if (this.deployProgress > this.targetDeployProgress) {
@@ -215,7 +227,7 @@ class DroneWatch extends THREE.Group {
 
             if (isFullyDeployed) {
                 // Rotação constante das hélices
-                rotor.propellerGroup.rotation.y += 15 * dt;
+                rotor.propellerGroup.rotation.y += 20 * dt;
             }
         });
 
@@ -223,20 +235,28 @@ class DroneWatch extends THREE.Group {
         if (isFullyDeployed) {
             const moveSpeed = 15 * dt;
             const rotSpeed = 2 * dt;
+            const minX = -50;
+            const maxX = 50;
+            const minY = 0;
+            const maxY = 50;
+            const minZ = -50;
+            const maxZ = 50;
+            const maxRot = Math.PI / 4;
+            const minRot = -Math.PI / 4;
 
             // Translações
-            if (pressed.moveLeft) this.position.x -= moveSpeed;
-            if (pressed.moveRight) this.position.x += moveSpeed;
-            if (pressed.moveUp) this.position.y += moveSpeed;
-            if (pressed.moveDown) this.position.y -= moveSpeed;
-            if (pressed.moveForward) this.position.z -= moveSpeed;
-            if (pressed.moveBackward) this.position.z += moveSpeed;
+            if (pressed.moveLeft && this.position.x > minX) this.position.x -= moveSpeed;
+            if (pressed.moveRight && this.position.x < maxX) this.position.x += moveSpeed;
+            if (pressed.moveUp && this.position.y < maxY) this.position.y += moveSpeed;
+            if (pressed.moveDown && this.position.y > minY) this.position.y -= moveSpeed;
+            if (pressed.moveForward && this.position.z > minZ) this.position.z -= moveSpeed;
+            if (pressed.moveBackward && this.position.z < maxZ) this.position.z += moveSpeed;
 
             // Rotações
             if (pressed.yawLeft) this.rotation.y += rotSpeed;
             if (pressed.yawRight) this.rotation.y -= rotSpeed;
-            if (pressed.pitchUp) this.rotation.x -= rotSpeed;
-            if (pressed.pitchDown) this.rotation.x += rotSpeed;
+            if (pressed.pitchUp && this.rotation.z > minRot) this.rotation.z -= rotSpeed;
+            if (pressed.pitchDown && this.rotation.z < maxRot) this.rotation.z += rotSpeed;
         }
     }
 }
@@ -299,11 +319,11 @@ class WatchBody extends THREE.Group {
     _addCameraLense() {
         const box = new THREE.CylinderGeometry(0.3, 0.3, 1, 32);
         const material = new THREE.MeshBasicMaterial({
-            color: 0x202020,
+            color: 0x808080,
             wireframe: false
         });
         const mesh = new THREE.Mesh(box, material);
-        mesh.position.set(-2.5, 1.1, 0);
+        mesh.position.set(-2.5, 0.501, 0);
         this._bodyGroup.add(mesh);
         addAxesHelper(mesh, 1);
     }
