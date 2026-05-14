@@ -13,11 +13,19 @@ const HEIGHT = window.innerHeight;
 const WIDTH = window.innerWidth;
 
 let cameras = [];
+let balloons = [];
 let cameraHelpers = [];
 let axesHelpers = [];
 let scene, renderer, camera;
 let droneWatch;
+let droneScale = 1;
+let ballonScale = 1;
 const clock = new THREE.Clock();
+
+let collisionAnimating = false;
+let collisionHelpers = [];
+let showHelpers = false;
+let showCollisionSpheres = false;
 
 let pressed = {
     camera_1: false,
@@ -58,7 +66,6 @@ function createScene() {
     let strap = new Strap();
     scene.add(strap);
 
-    let balloons = [];
     let ballonsPositions = [
         [0, -30, 0],
         [-20, 35, 0],
@@ -143,6 +150,7 @@ class Strap extends THREE.Group {
         this._strap = null;
         this._loadStrap();
         this.rotateY(Math.PI / 2);
+        this.scale.set(droneScale, droneScale, droneScale);
     }
 
     _loadStrap() {
@@ -153,7 +161,6 @@ class Strap extends THREE.Group {
 
             this._strap.scale.set(0.22, 0.10, 0.10);
             this._strap.position.set(0, -2, 0);
-            this._strap.rotation.y = Math.PI / 2;
             this.add(this._strap);
 
             console.log("Strap loaded and added to DroneWatch");
@@ -164,7 +171,6 @@ class Strap extends THREE.Group {
 class DroneWatch extends THREE.Group {
     constructor() {
         super();
-        this._strap = null;
         this.deployProgress = 0; // 0 = recolhido, 1 = totalmente estendido
         this.targetDeployProgress = 0;
 
@@ -177,7 +183,7 @@ class DroneWatch extends THREE.Group {
         this.add(axesHelper);
         axesHelpers.push(axesHelper);
         this.rotation.order = 'YXZ';
-        this.rotation.y = -Math.PI / 2;
+        this.scale.set(droneScale, droneScale, droneScale)
     }
 
     _addRotors() {
@@ -244,13 +250,18 @@ class DroneWatch extends THREE.Group {
             const maxRot = Math.PI / 4;
             const minRot = -Math.PI / 4;
 
-            // Translações
-            if (pressed.moveLeft && this.position.x > minX) this.position.x -= moveSpeed;
-            if (pressed.moveRight && this.position.x < maxX) this.position.x += moveSpeed;
-            if (pressed.moveUp && this.position.y < maxY) this.position.y += moveSpeed;
-            if (pressed.moveDown && this.position.y > minY) this.position.y -= moveSpeed;
-            if (pressed.moveForward && this.position.z > minZ) this.position.z -= moveSpeed;
-            if (pressed.moveBackward && this.position.z < maxZ) this.position.z += moveSpeed;
+            // Translações (eixos locais)
+            if (pressed.moveLeft) this.translateX(-moveSpeed);
+            if (pressed.moveRight) this.translateX(moveSpeed);
+            if (pressed.moveUp) this.translateY(moveSpeed);
+            if (pressed.moveDown) this.translateY(-moveSpeed);
+            if (pressed.moveForward) this.translateZ(-moveSpeed);
+            if (pressed.moveBackward) this.translateZ(moveSpeed);
+
+            // Limitar o movimento do drone 
+            this.position.x = THREE.MathUtils.clamp(this.position.x, minX, maxX);
+            this.position.y = THREE.MathUtils.clamp(this.position.y, minY, maxY);
+            this.position.z = THREE.MathUtils.clamp(this.position.z, minZ, maxZ);
 
             // Rotações
             if (pressed.yawLeft) this.rotation.y += rotSpeed;
@@ -347,6 +358,7 @@ class RotorAssembly extends THREE.Group {
         this._addMotor();
         this._addFrame();
         this._addPropeller();
+        this._addCollisionSphere();
 
         const axesHelper = new THREE.AxesHelper(4);
         axesHelper.visible = false;
@@ -403,6 +415,10 @@ class RotorAssembly extends THREE.Group {
         this.propellerGroup.add(mesh);
         addAxesHelper(mesh, 2);
     }
+
+    _addCollisionSphere() {
+        this.collisionSphere = new CollisionSphere(this.propellerGroup, 2.47, droneScale);
+    }
 }
 
 class Balloon extends THREE.Group {
@@ -411,11 +427,15 @@ class Balloon extends THREE.Group {
         this._addBody();
         this._addKnot();
         this._addRibbon();
+        this._addCollisionSphere();
+
+        this.isPopping = false;
 
         const axesHelper = new THREE.AxesHelper(8);
         axesHelper.visible = false;
         this.add(axesHelper);
         axesHelpers.push(axesHelper);
+        this.scale.set(ballonScale, ballonScale, ballonScale)
     }
 
     // Corpo do balão (esfera vermelha, low-poly)
@@ -447,17 +467,78 @@ class Balloon extends THREE.Group {
         this.add(mesh);
         addAxesHelper(mesh, 3);
     }
+
+    _addCollisionSphere() {
+        this.collisionSphere = new CollisionSphere(this, 5, ballonScale);
+    }
+
+    _pop() {
+        this.position.y += 300;
+        collisionAnimating = false;
+    }
+}
+
+class CollisionSphere {
+    constructor(parent, baseRadius, scale) {
+        this.parent = parent;
+        this.center = new THREE.Vector3();
+        this.radius = baseRadius * scale;
+
+        // Inicializar o centro com a posição global
+        this.parent.getWorldPosition(this.center);
+
+        // Visualização da esfera de colisão (wireframe)
+        const geo = new THREE.SphereGeometry(baseRadius, 16, 16);
+        const mat = new THREE.MeshBasicMaterial({
+            color: 0x00ff00,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.3
+        });
+        this.debugMesh = new THREE.Mesh(geo, mat);
+        this.debugMesh.visible = false;
+        parent.add(this.debugMesh);
+        collisionHelpers.push(this.debugMesh);
+    }
+
+    _updateCenter() {
+        this.parent.getWorldPosition(this.center);
+    }
+
+    _intersects(other) {
+        return this.center.distanceTo(other.center) <= this.radius + other.radius;
+    }
+
+    _scale(factor) {
+        this.radius *= factor;
+    }
 }
 
 //////////////////////
 /* CHECK COLLISIONS */
 //////////////////////
-function checkCollisions() { }
+function checkCollisions() {
+    for (let i = 0; i < balloons.length; i++) {
+        for (let j = 0; j < 4; j++) {
+            if (balloons[i].collisionSphere._intersects(droneWatch.rotors[j].collisionSphere)) {
+                collisionAnimating = true;
+                balloons[i].isPopping = true;
+            }
+        }
+    }
+}
 
 ///////////////////////
 /* HANDLE COLLISIONS */
 ///////////////////////
-function handleCollisions() { }
+function handleCollisions() {
+    for (let i = 0; i < balloons.length; i++) {
+        if (balloons[i].isPopping) {
+            balloons[i]._pop();
+            balloons[i].isPopping = false;
+        }
+    }
+}
 
 ////////////
 /* UPDATE */
@@ -477,7 +558,17 @@ function update(dt) {
 
     if (droneWatch) {
         droneWatch.update(dt, pressed);
+        for (let i = 0; i < 4; i++) {
+            droneWatch.rotors[i].collisionSphere._updateCenter();
+        }
     }
+
+    for (let i = 0; i < balloons.length; i++) {
+        balloons[i].collisionSphere._updateCenter();
+    }
+
+    checkCollisions();
+    handleCollisions();
 }
 
 /////////////
@@ -522,6 +613,7 @@ function onResize() { }
 /* KEY DOWN CALLBACK */
 ///////////////////////
 function onKeyDown(e) {
+    if (collisionAnimating) return;
     switch (e.key.toLowerCase()) {
         case "1": pressed.camera_1 = true; break;
         case "2": pressed.camera_2 = true; break;
@@ -529,8 +621,13 @@ function onKeyDown(e) {
         case "4": pressed.camera_4 = true; break;
         case "5": pressed.camera_5 = true; break;
         case "h":
-            cameraHelpers.forEach(h => h.visible = !h.visible);
-            axesHelpers.forEach(h => h.visible = !h.visible);
+            showHelpers = !showHelpers;
+            cameraHelpers.forEach(h => h.visible = showHelpers);
+            axesHelpers.forEach(h => h.visible = showHelpers);
+            break;
+        case "c":
+            showCollisionSpheres = !showCollisionSpheres;
+            collisionHelpers.forEach(h => h.visible = showCollisionSpheres);
             break;
         case "q":
             if (droneWatch) droneWatch.toggleDeploy();
@@ -552,6 +649,7 @@ function onKeyDown(e) {
 /* KEY UP CALLBACK */
 ///////////////////////
 function onKeyUp(e) {
+    if (collisionAnimating) return;
     switch (e.key.toLowerCase()) {
         case "a": pressed.moveLeft = false; break;
         case "d": pressed.moveRight = false; break;
