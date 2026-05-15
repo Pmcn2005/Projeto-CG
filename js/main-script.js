@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { VRButton } from "three/addons/webxr/VRButton.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import * as Stats from "three/addons/libs/stats.module.js";
+import Stats from "three/addons/libs/stats.module.js";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 
 //////////////////////
@@ -11,21 +11,24 @@ import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 const BACKGROUND = new THREE.Color(0x202020);
 const HEIGHT = window.innerHeight;
 const WIDTH = window.innerWidth;
+const clock = new THREE.Clock();
+let stats;
 
-let cameras = [];
-let balloons = [];
-let cameraHelpers = [];
-let axesHelpers = [];
 let scene, renderer, camera;
+let cameras = [];
+
 let droneWatch;
+let balloons = [];
 let droneScale = 1;
 let ballonScale = 1;
-const clock = new THREE.Clock();
 
-let collisionAnimating = false;
+let cameraHelpers = [];
+let axesHelpers = [];
 let collisionHelpers = [];
 let showHelpers = false;
 let showCollisionSpheres = false;
+
+let collisionAnimating = false;
 
 let pressed = {
     camera_1: false,
@@ -33,6 +36,7 @@ let pressed = {
     camera_3: false,
     camera_4: false,
     camera_5: false,
+    camera_6: false,
     moveRight: false,    // D
     moveLeft: false,     // A
     moveUp: false,       // W
@@ -45,11 +49,21 @@ let pressed = {
     pitchDown: false     // L
 };
 
+//////////////////////
+/* HELPER FUNCTIONS */
+//////////////////////
+
 function addAxesHelper(obj, size) {
     const axesHelper = new THREE.AxesHelper(size);
     axesHelper.visible = false;
     obj.add(axesHelper);
     axesHelpers.push(axesHelper);
+}
+
+function toggleWireframe() {
+    scene.traverse((node) => {
+        if (node instanceof THREE.Mesh) node.material.wireframe = !node.material.wireframe;
+    });
 }
 
 
@@ -98,11 +112,10 @@ function setupCameras() {
         [0, 60, 0],    // 1 - top (ortho)
         [20, 0, 0],    // 2 - side (ortho)
         [0, 0, 20],    // 3 - front (ortho)
-        [40, 40, 40],  // 4 - perspective (ortho)
-        // 5 - perspective (perspetiva) — mesma posição que a 4
+        [40, 40, 40],  // 4 - perspective (ortho); 5 - perspective (perspetiva)
     ];
 
-    // Câmeras 0-3: ortográficas
+    // Câmeras 1-3: ortográficas
     for (let i = 0; i < 4; i++) {
         cameras[i] = new THREE.OrthographicCamera(
             WIDTH / -32,
@@ -131,7 +144,8 @@ function setupCameras() {
     cameraHelpers.push(helper);
     scene.add(helper);
 
-    camera = cameras[0];
+
+    camera = cameras[1];
 }
 
 function setCamera(index) {
@@ -191,8 +205,8 @@ class DroneWatch extends THREE.Group {
         const corners = [
             [3, 0, -2.5],   // Canto Frontal Direito
             [-3, 0, -2.5],  // Canto Frontal Esquerdo
-            [3, 0, 2.5],  // Canto Traseiro Direito
-            [-3, 0, 2.5]  // Canto Traseiro Esquerdo
+            [3, 0, 2.5],    // Canto Traseiro Direito
+            [-3, 0, 2.5]    // Canto Traseiro Esquerdo
         ];
 
         const angles = [
@@ -211,16 +225,20 @@ class DroneWatch extends THREE.Group {
         }
     }
 
+
+
     toggleDeploy() {
         this.targetDeployProgress = this.targetDeployProgress === 1 ? 0 : 1;
     }
 
     update(dt, pressed) {
-        // 1. Animação de recolha / extensão
+        // Animação de recolha / extensão
         const deploySpeed = 1.5
         if (this.deployProgress < this.targetDeployProgress) {
             this.deployProgress = Math.min(1, this.deployProgress + dt * deploySpeed);
-        } else if (this.deployProgress > this.targetDeployProgress) {
+        }
+
+        else if (this.deployProgress > this.targetDeployProgress) {
             this.deployProgress = Math.max(0, this.deployProgress - dt * deploySpeed);
         }
 
@@ -237,7 +255,7 @@ class DroneWatch extends THREE.Group {
             }
         });
 
-        // 2 a 6. Controlo de movimento do DroneWatch (apenas se totalmente estendido)
+        // Controlo de movimento do DroneWatch (apenas se totalmente estendido)
         if (isFullyDeployed) {
             const moveSpeed = 15 * dt;
             const rotSpeed = 2 * dt;
@@ -268,6 +286,10 @@ class DroneWatch extends THREE.Group {
             if (pressed.yawRight) this.rotation.y -= rotSpeed;
             if (pressed.pitchUp && this.rotation.z > minRot) this.rotation.z -= rotSpeed;
             if (pressed.pitchDown && this.rotation.z < maxRot) this.rotation.z += rotSpeed;
+        }
+
+        for (let i = 0; i < 4; i++) {
+            this.rotors[i].collisionSphere._updateCenter();
         }
     }
 }
@@ -328,6 +350,7 @@ class WatchBody extends THREE.Group {
     }
 
     _addCameraLense() {
+        // Cylinder to represent the camera lens
         const box = new THREE.CylinderGeometry(0.3, 0.3, 1, 32);
         const material = new THREE.MeshBasicMaterial({
             color: 0x808080,
@@ -337,6 +360,16 @@ class WatchBody extends THREE.Group {
         mesh.position.set(-2.5, 0.501, 0);
         this._bodyGroup.add(mesh);
         addAxesHelper(mesh, 1);
+
+        // Mobile Camera attached to the drone's lens
+        cameras[5] = new THREE.PerspectiveCamera(90, WIDTH / HEIGHT, 0.1, 1000);
+        // By default camera looks down -Z. Rotate it to look down -X (outside the lens)
+        cameras[5].rotation.y = Math.PI / 2;
+        mesh.add(cameras[5]);
+
+        const helper = new THREE.CameraHelper(cameras[5]);
+        helper.visible = false;
+        cameraHelpers.push(helper);
     }
 }
 
@@ -366,7 +399,7 @@ class RotorAssembly extends THREE.Group {
         axesHelpers.push(axesHelper);
     }
 
-    // Cilindro fixo nos cantos do relógio (pivot de rotação do braço)
+    // Cilindro fixo nos cantos do relógio 
     _addBase() {
         const cyl = new THREE.CylinderGeometry(0.3, 0.3, 2, 16);
         const material = new THREE.MeshBasicMaterial({ color: 0x555555 });
@@ -385,7 +418,7 @@ class RotorAssembly extends THREE.Group {
         addAxesHelper(mesh, 2);
     }
 
-    // Cilindro na ponta do braço (motor)
+    // Cilindro na ponta do braço 
     _addMotor() {
         const cyl = new THREE.CylinderGeometry(0.3, 0.3, 1.5, 16);
         const material = new THREE.MeshBasicMaterial({ color: 0x333333 });
@@ -395,7 +428,7 @@ class RotorAssembly extends THREE.Group {
         addAxesHelper(mesh, 1.5);
     }
 
-    // Caixilharia (toro à volta do motor)
+    // Caixilharia 
     _addFrame() {
         const toro = new THREE.TorusGeometry(2.22, 0.25, 8, 24);
         const material = new THREE.MeshBasicMaterial({ color: 0x0000ff });
@@ -438,7 +471,7 @@ class Balloon extends THREE.Group {
         this.scale.set(ballonScale, ballonScale, ballonScale)
     }
 
-    // Corpo do balão (esfera vermelha, low-poly)
+    // Corpo do balão 
     _addBody() {
         const sphere = new THREE.SphereGeometry(5, 16, 16);
         const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
@@ -487,7 +520,7 @@ class CollisionSphere {
         // Inicializar o centro com a posição global
         this.parent.getWorldPosition(this.center);
 
-        // Visualização da esfera de colisão (wireframe)
+        // Visualização da esfera de colisão 
         const geo = new THREE.SphereGeometry(baseRadius, 16, 16);
         const mat = new THREE.MeshBasicMaterial({
             color: 0x00ff00,
@@ -555,12 +588,11 @@ function update(dt) {
     pressed.camera_4 = false;
     if (pressed.camera_5) setCamera(4);
     pressed.camera_5 = false;
+    if (pressed.camera_6) setCamera(5);
+    pressed.camera_6 = false;
 
     if (droneWatch) {
         droneWatch.update(dt, pressed);
-        for (let i = 0; i < 4; i++) {
-            droneWatch.rotors[i].collisionSphere._updateCenter();
-        }
     }
 
     for (let i = 0; i < balloons.length; i++) {
@@ -592,6 +624,10 @@ function init() {
 
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+
+    stats = new Stats();
+    stats.showPanel(0);
+    document.body.appendChild(stats.dom);
 }
 
 /////////////////////
@@ -599,9 +635,12 @@ function init() {
 /////////////////////
 function animate() {
     requestAnimationFrame(animate);
+
+    stats.begin();
     const dt = clock.getDelta();
     update(dt);
     render();
+    stats.end();
 }
 
 ////////////////////////////
@@ -620,6 +659,8 @@ function onKeyDown(e) {
         case "3": pressed.camera_3 = true; break;
         case "4": pressed.camera_4 = true; break;
         case "5": pressed.camera_5 = true; break;
+        case "6": pressed.camera_6 = true; break;
+        case "7": toggleWireframe(); break;
         case "h":
             showHelpers = !showHelpers;
             cameraHelpers.forEach(h => h.visible = showHelpers);
