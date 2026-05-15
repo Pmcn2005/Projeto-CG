@@ -8,21 +8,47 @@
       {
         "imports": {
           "three": "https://cdn.jsdelivr.net/npm/three@0.176.0/build/three.module.js",
-          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.176.0/examples/jsm/"
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.176.0/examples/jsm/",
+          "stats.js": "https://cdn.jsdelivr.net/npm/stats.js@0.17.0/src/Stats.js",
+          "gltfexporter": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/exporters/GLTFExporter.js"
         }
       }
-      </script>
-  <script type="importmap">
-      {
-        "imports": {
-            "stats.js": "https://cdn.jsdelivr.net/npm/stats.js@0.17.0/src/Stats.js"
-        }
-    }
-</script>
+  </script>
+  <script type="module">
+    import GUI from 'https://cdn.jsdelivr.net/npm/lil-gui@0.21/+esm';
+  </script>
   <script type="module" src="js/main-script.js"></script>
   <title>CG - Table Example</title>
 </head>
 
-<body></body>
+<body>
+  <div class="keyboard">
+    <div class="keyrow">
+      <div class="key">1</div>
+      <div class="key">2</div>
+      <div class="key">3</div>
+      <div class="key">4</div>
+      <div class="key">5</div>
+      <div class="key">6</div>
+    </div>
+    <div class="keyrow">
+      <div class="key">7</div>
+      <div class="key">W</div>
+      <div class="key">Q</div>
+      <div class="key">U</div>
+      <div class="key">I</div>
+      <div class="key">O</div>
+    </div>
+    <div class="keyrow">
+      <div class="key">A</div>
+      <div class="key">S</div>
+      <div class="key">D</div>
+      <div class="key">J</div>
+      <div class="key">K</div>
+      <div class="key">L</div>
+      <div class="key">H</div>
+    </div>
+  </div>
+</body>
 
 </html>

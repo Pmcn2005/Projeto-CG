@@ -21,6 +21,9 @@ let droneWatch;
 let balloons = [];
 let droneScale = 1;
 let ballonScale = 1;
+let moveSpeedBase = 15;
+let rotSpeedBase = 2;
+let ballonColor = 0xff0000;
 
 let cameraHelpers = [];
 let axesHelpers = [];
@@ -80,16 +83,14 @@ function createScene() {
     let strap = new Strap();
     scene.add(strap);
 
-    let ballonsPositions = [
-        [0, -30, 0],
-        [-20, 35, 0],
-        [0, 25, 20],
-        [-15, 20, 15]
-    ]
-
     for (let i = 0; i < 4; i++) {
         balloons[i] = new Balloon();
-        balloons[i].position.set(ballonsPositions[i][0], ballonsPositions[i][1], ballonsPositions[i][2]);
+
+        balloons[i].position.set(
+            THREE.MathUtils.randFloat(-30, 30),
+            THREE.MathUtils.randFloat(5, 40),
+            THREE.MathUtils.randFloat(-30, 30)
+        );
         scene.add(balloons[i]);
     }
 
@@ -118,11 +119,11 @@ function setupCameras() {
     // Câmeras 1-3: ortográficas
     for (let i = 0; i < 4; i++) {
         cameras[i] = new THREE.OrthographicCamera(
-            WIDTH / -32,
-            WIDTH / 32,
-            HEIGHT / 32,
-            HEIGHT / -32,
-            0.1,
+            WIDTH / -16,
+            WIDTH / 16,
+            HEIGHT / 16,
+            HEIGHT / -16,
+            1,
             1000
         );
         cameras[i].position.set(...positions[i]);
@@ -257,8 +258,8 @@ class DroneWatch extends THREE.Group {
 
         // Controlo de movimento do DroneWatch (apenas se totalmente estendido)
         if (isFullyDeployed) {
-            const moveSpeed = 15 * dt;
-            const rotSpeed = 2 * dt;
+            const moveSpeed = moveSpeedBase * dt;
+            const rotSpeed = rotSpeedBase * dt;
             const minX = -50;
             const maxX = 50;
             const minY = 0;
@@ -450,7 +451,7 @@ class RotorAssembly extends THREE.Group {
     }
 
     _addCollisionSphere() {
-        this.collisionSphere = new CollisionSphere(this.propellerGroup, 2.47, droneScale);
+        this.collisionSphere = new CollisionSphere(this.propellerGroup, 2.47);
     }
 }
 
@@ -474,11 +475,11 @@ class Balloon extends THREE.Group {
     // Corpo do balão 
     _addBody() {
         const sphere = new THREE.SphereGeometry(5, 16, 16);
-        const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-        const mesh = new THREE.Mesh(sphere, material);
-        mesh.position.set(0, 0, 0);
-        this.add(mesh);
-        addAxesHelper(mesh, 6);
+        const material = new THREE.MeshBasicMaterial({ color: ballonColor });
+        this.bodyMesh = new THREE.Mesh(sphere, material);
+        this.bodyMesh.position.set(0, 0, 0);
+        this.add(this.bodyMesh);
+        addAxesHelper(this.bodyMesh, 6);
     }
 
     // Nó na base do balão
@@ -502,20 +503,22 @@ class Balloon extends THREE.Group {
     }
 
     _addCollisionSphere() {
-        this.collisionSphere = new CollisionSphere(this, 5, ballonScale);
+        this.collisionSphere = new CollisionSphere(this, 5);
     }
 
     _pop() {
         this.position.y += 300;
         collisionAnimating = false;
     }
+
 }
 
 class CollisionSphere {
-    constructor(parent, baseRadius, scale) {
+    constructor(parent, baseRadius) {
         this.parent = parent;
         this.center = new THREE.Vector3();
-        this.radius = baseRadius * scale;
+        this.baseRadius = baseRadius;
+        this.radius = baseRadius;
 
         // Inicializar o centro com a posição global
         this.parent.getWorldPosition(this.center);
@@ -536,14 +539,14 @@ class CollisionSphere {
 
     _updateCenter() {
         this.parent.getWorldPosition(this.center);
+        // Update radius based on current world scale
+        const worldScale = new THREE.Vector3();
+        this.parent.getWorldScale(worldScale);
+        this.radius = this.baseRadius * Math.max(worldScale.x, worldScale.y, worldScale.z);
     }
 
     _intersects(other) {
         return this.center.distanceTo(other.center) <= this.radius + other.radius;
-    }
-
-    _scale(factor) {
-        this.radius *= factor;
     }
 }
 
@@ -600,7 +603,7 @@ function update(dt) {
     }
 
     checkCollisions();
-    handleCollisions();
+    handleCollisions(dt);
 }
 
 /////////////
@@ -628,6 +631,49 @@ function init() {
     stats = new Stats();
     stats.showPanel(0);
     document.body.appendChild(stats.dom);
+
+    createGUI();
+}
+
+////////////////////////
+/* CREATE CONTROL GUI */
+////////////////////////
+function createGUI() {
+    const gui = new GUI();
+
+    const params = {
+        droneScale: droneScale,
+        ballonScale: ballonScale,
+        moveSpeed: moveSpeedBase,
+        rotSpeed: rotSpeedBase,
+        collisionVisible: showCollisionSpheres,
+        ballonColor: ballonColor,
+    };
+
+    gui.add(params, 'droneScale', 0.5, 3, 0.1).name('Drone Scale').onChange((value) => {
+        droneWatch.scale.set(value, value, value);
+    });
+
+    gui.add(params, 'ballonScale', 0.5, 3, 0.1).name('Balloon Scale').onChange((value) => {
+        balloons.forEach(b => b.scale.set(value, value, value));
+    });
+
+    gui.add(params, 'moveSpeed', 5, 50, 1).name('Move Speed').onChange((value) => {
+        moveSpeedBase = value;
+    });
+
+    gui.add(params, 'rotSpeed', 0.5, 5, 0.1).name('Rotation Speed').onChange((value) => {
+        rotSpeedBase = value;
+    });
+
+    gui.add(params, 'collisionVisible').name('Collision Visible').onChange((value) => {
+        showCollisionSpheres = value;
+        collisionHelpers.forEach(h => h.visible = value);
+    });
+
+    gui.addColor(params, 'ballonColor').name('Balloon Color').onChange((value) => {
+        balloons.forEach(b => b.bodyMesh.material.color.set(value));
+    });
 }
 
 /////////////////////
@@ -666,10 +712,6 @@ function onKeyDown(e) {
             cameraHelpers.forEach(h => h.visible = showHelpers);
             axesHelpers.forEach(h => h.visible = showHelpers);
             break;
-        case "c":
-            showCollisionSpheres = !showCollisionSpheres;
-            collisionHelpers.forEach(h => h.visible = showCollisionSpheres);
-            break;
         case "q":
             if (droneWatch) droneWatch.toggleDeploy();
             break;
@@ -704,6 +746,45 @@ function onKeyUp(e) {
         case "l": pressed.pitchUp = false; break;
     }
 }
+
+//////////////////////
+/* HUD KEY BINDINGS */
+//////////////////////
+function mapKey(keyDiv) {
+    const key = keyDiv.innerText.toUpperCase();
+
+    let keyDivs = keyMap.get(key);
+
+    if (!keyDivs) {
+        keyDivs = [];
+        keyMap.set(key, keyDivs);
+    }
+
+    keyDivs.push(keyDiv);
+}
+
+function handleKeyEvent(event) {
+    if (event.repeat) return;
+
+    const keyDivs = keyMap.get(event.key.toUpperCase());
+
+    if (!keyDivs) return;
+
+    if (event.type === "keydown") {
+        keyDivs.forEach((keyDiv) => {
+            keyDiv.classList.add("pressed");
+        });
+    } else if (event.type === "keyup") {
+        keyDivs.forEach((keyDiv) => {
+            keyDiv.classList.remove("pressed");
+        });
+    }
+}
+
+const keyMap = new Map();
+document.querySelectorAll(".key").forEach(mapKey);
+document.addEventListener("keydown", handleKeyEvent);
+document.addEventListener("keyup", handleKeyEvent);
 
 init();
 animate();

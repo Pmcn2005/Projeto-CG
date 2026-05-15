@@ -1,5 +1,49 @@
 body {
     margin: 0px;
-    background-color: #2d2d2d;
-    overflow: hidden;
+    background: black;
+}
+
+.keyboard {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.keyrow {
+    display: flex;
+    flex-direction: row;
+    gap: 2px;
+}
+
+.keyrow.offset1 {
+    padding-left: 20px;
+}
+
+.keyrow.offset2 {
+    padding-left: 40px;
+}
+
+.key {
+    display: flex;
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(to left top, PapayaWhip, #e7cda7);
+    align-items: center;
+    justify-content: center;
+    border: 4px outset PapayaWhip;
+    border-radius: 8px;
+    font-family: sans-serif;
+    font-size: 24px;
+}
+
+.key.pressed {
+    padding: 4px 0px 0px 4px;
+    width: 56px;
+    height: 56px;
+    border-style: inset;
+    background-color: linear-gradient(to left top, Moccasin, #efc06e);
+    border-color: #f8e2bc;
 }
